@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    domains: [
+      "github-readme-stats-eosin-gamma-81.vercel.app",
+    ]
+  }
 };
 
 export default nextConfig;
