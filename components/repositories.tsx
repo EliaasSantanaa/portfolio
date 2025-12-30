@@ -37,6 +37,7 @@ interface Repository {
   homepage?: string;
   size?: number;
   open_issues_count?: number;
+  fork?: boolean;
   license?: {
     name: string;
     spdx_id: string;
@@ -47,6 +48,7 @@ export function Repositories() {
   const [repos, setRepos] = useState<Repository[]>([]);
   const [filteredRepos, setFilteredRepos] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
@@ -54,13 +56,98 @@ export function Repositories() {
   useEffect(() => {
     const fetchReposWithReadme = async () => {
       try {
-        const response = await fetch(
-          "https://api.github.com/users/EliaasSantanaa/repos?sort=updated&per_page=9"
-        );
-        const reposData = await response.json();
+        console.log("Fetching repositories...");
 
+        // Verificar cache do localStorage (válido por 1 hora)
+        const cacheKey = "github-repos-cache";
+        const cacheTimeKey = "github-repos-cache-time";
+        const cachedData = localStorage.getItem(cacheKey);
+        const cacheTime = localStorage.getItem(cacheTimeKey);
+
+        const ONE_HOUR = 60 * 60 * 1000;
+        const now = Date.now();
+
+        // Usar cache se ainda for válido
+        if (cachedData && cacheTime && now - parseInt(cacheTime) < ONE_HOUR) {
+          console.log("Using cached repositories data");
+          const parsedData = JSON.parse(cachedData);
+          setRepos(parsedData);
+          setFilteredRepos(parsedData);
+          setLoading(false);
+          return;
+        }
+
+        console.log("Fetching fresh data from GitHub API...");
+
+        // Buscar repositórios da API do GitHub
+        const response = await fetch(
+          "https://api.github.com/users/EliaasSantanaa/repos?sort=updated&per_page=100",
+          {
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+            },
+          }
+        );
+
+        console.log("Response status:", response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("GitHub API error:", errorText);
+
+          // Se for rate limit e temos cache antigo, usar o cache mesmo expirado
+          if (response.status === 403 && cachedData) {
+            console.warn("Rate limit exceeded, using expired cache");
+            const parsedData = JSON.parse(cachedData);
+            setRepos(parsedData);
+            setFilteredRepos(parsedData);
+            setLoading(false);
+            return;
+          }
+
+          throw new Error(
+            response.status === 403
+              ? "Rate Limit do GitHub atingido. Os repositórios serão carregados em cache na próxima visita."
+              : `GitHub API retornou status ${response.status}`
+          );
+        }
+
+        const reposData = await response.json();
+        console.log("Repositories fetched:", reposData.length);
+
+        // Verificar se reposData é um array
+        if (!Array.isArray(reposData)) {
+          console.error("GitHub API returned unexpected format:", reposData);
+          throw new Error("Formato de dados inesperado da API");
+        }
+
+        if (reposData.length === 0) {
+          console.warn("No repositories found");
+          setRepos([]);
+          setFilteredRepos([]);
+          setLoading(false);
+          return;
+        }
+
+        // Filtrar e processar repositórios
+        const filteredData = (reposData as Repository[])
+          .filter((repo) => !repo.fork) // Remover forks
+          .sort(
+            (a, b) =>
+              new Date(b.updated_at).getTime() -
+              new Date(a.updated_at).getTime()
+          )
+          .slice(0, 12); // Limitar a 12 repositórios
+
+        console.log(
+          `Showing ${filteredData.length} repositories (after filtering)`
+        );
+
+        // Buscar README apenas para os primeiros repositórios
         const reposWithReadme = await Promise.all(
-          reposData.map(async (repo: Repository) => {
+          filteredData.map(async (repo) => {
+            let readme = repo.description;
+
             try {
               const readmeResponse = await fetch(
                 `https://api.github.com/repos/EliaasSantanaa/${repo.name}/readme`,
@@ -70,23 +157,43 @@ export function Repositories() {
                   },
                 }
               );
+
               if (readmeResponse.ok) {
                 const readmeContent = await readmeResponse.text();
                 const excerpt = extractReadmeExcerpt(readmeContent);
-                return { ...repo, readme: excerpt };
+                if (excerpt) readme = excerpt;
               }
-            } catch (error) {
-              console.error(`Error fetching README for ${repo.name}:`, error);
+            } catch {
+              // Silently fail, use description instead
+              console.debug(`README not found for ${repo.name}`);
             }
-            return repo;
+
+            return { ...repo, readme };
           })
         );
 
+        console.log("All data processed successfully");
+
+        // Salvar no cache
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(reposWithReadme));
+          localStorage.setItem(cacheTimeKey, now.toString());
+          console.log("Data cached successfully");
+        } catch (e) {
+          console.warn("Failed to cache data:", e);
+        }
+
         setRepos(reposWithReadme);
         setFilteredRepos(reposWithReadme);
+        setError(null);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching repositories:", error);
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Erro ao carregar repositórios. Tente novamente mais tarde."
+        );
         setLoading(false);
       }
     };
@@ -165,6 +272,77 @@ export function Repositories() {
               </Card>
             ))}
           </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section id="projects" className="px-4 py-20 bg-muted/30">
+        <div className="max-w-7xl mx-auto">
+          <Card className="p-12 text-center">
+            <Code2 className="h-16 w-16 text-destructive mx-auto mb-4" />
+            <h3 className="text-2xl font-bold mb-2">
+              Erro ao Carregar Repositórios
+            </h3>
+            <p className="text-muted-foreground mb-4">{error}</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              {error.includes("Rate Limit") ? (
+                <>
+                  💡 <strong>Dica:</strong> Recarregue a página após alguns
+                  minutos. Os dados serão armazenados em cache por 1 hora.
+                </>
+              ) : (
+                "Verifique o console do navegador (F12) para mais detalhes"
+              )}
+            </p>
+            <div className="flex gap-4 justify-center">
+              <Button
+                onClick={() => {
+                  localStorage.removeItem("github-repos-cache");
+                  localStorage.removeItem("github-repos-cache-time");
+                  window.location.reload();
+                }}
+              >
+                Limpar Cache e Tentar Novamente
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  window.open("https://github.com/EliaasSantanaa", "_blank")
+                }
+              >
+                Ver no GitHub
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </section>
+    );
+  }
+
+  // Empty state when no repos after loading
+  if (!loading && repos.length === 0) {
+    return (
+      <section id="projects" className="px-4 py-20 bg-muted/30">
+        <div className="max-w-7xl mx-auto">
+          <Card className="p-12 text-center">
+            <Code2 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-2xl font-bold mb-2">
+              Nenhum Repositório Encontrado
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              Não foram encontrados repositórios públicos
+            </p>
+            <Button
+              onClick={() =>
+                window.open("https://github.com/EliaasSantanaa", "_blank")
+              }
+            >
+              Ver Perfil no GitHub
+            </Button>
+          </Card>
         </div>
       </section>
     );
