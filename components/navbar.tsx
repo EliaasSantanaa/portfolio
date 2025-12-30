@@ -42,7 +42,7 @@ export function Navbar() {
           {/* Logo */}
           <button
             onClick={() => scrollToSection("home")}
-            className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent hover:opacity-80 transition-opacity"
+            className="text-xl font-bold bg-linear-to-r from-primary to-accent bg-clip-text text-transparent hover:opacity-80 transition-opacity"
           >
             ES
           </button>

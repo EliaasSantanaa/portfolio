@@ -14,9 +14,11 @@ import {
   List,
   Search,
   Filter,
+  Info,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { ProjectDetailsModal } from "@/components/project-details-modal";
 
 interface Repository {
   id: number;
@@ -29,9 +31,16 @@ interface Repository {
   language: string;
   topics: string[];
   updated_at: string;
+  created_at?: string;
   default_branch: string;
   readme?: string;
   homepage?: string;
+  size?: number;
+  open_issues_count?: number;
+  license?: {
+    name: string;
+    spdx_id: string;
+  };
 }
 
 export function Repositories() {
@@ -339,29 +348,42 @@ export function Repositories() {
 
                 {/* Actions */}
                 <div className="mt-auto flex gap-2">
+                  <ProjectDetailsModal
+                    repo={repo}
+                    trigger={
+                      <Button variant="outline" className="flex-1 group/btn">
+                        <Info className="h-4 w-4 mr-2" />
+                        <span>Ver Detalhes</span>
+                      </Button>
+                    }
+                  />
                   <Button
                     variant="default"
-                    className="flex-1 group/btn"
+                    size="icon"
                     asChild
+                    title="Ver Código"
                   >
                     <a
                       href={repo.html_url}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <span>Ver Código</span>
-                      <ExternalLink className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5" />
+                      <ExternalLink className="h-4 w-4" />
                     </a>
                   </Button>
                   {repo.homepage && (
-                    <Button variant="outline" size="icon" asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      asChild
+                      title="Ver Demo"
+                    >
                       <a
                         href={repo.homepage}
                         target="_blank"
                         rel="noopener noreferrer"
-                        title="Ver Demo"
                       >
-                        <ExternalLink className="h-4 w-4" />
+                        <Eye className="h-4 w-4" />
                       </a>
                     </Button>
                   )}
